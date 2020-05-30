@@ -1,0 +1,77 @@
+import org.gradle.internal.jvm.Jvm
+
+plugins {
+    id 'idea'
+    id 'cpp'
+    id 'java'
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'HelloWorld'
+    }
+}
+
+// Allow the execution of java files through gradle directly
+tasks.withType(JavaExec) {
+    systemProperty 'java.library.path', file("${buildDir}/libs/bridge/shared/x64/release/").absolutePath
+}
+
+classes {
+    dependsOn 'bridgeX64ReleaseSharedLibrary'
+}
+
+// Task to generate the header files for the java native methods.
+task('javah') {
+    group 'build'
+
+    doLast {
+        // Works with javac only since 1.10 (for older versions ant.javah should be used)
+        def destDir = "${buildDir}/tmp/nativeCompile"
+        mkdir destDir
+        ant.javac(nativeheaderdir: 'src/main/jni', srcdir: 'src/main/java', destdir: destDir)
+    }
+}
+
+model {
+    platforms {
+        x86 {
+            architecture "x86"
+        }
+
+        x64 {
+            architecture "x86_64"
+        }
+    }
+
+    components {
+        bridge(NativeLibrarySpec) {
+            targetPlatform "x86"
+            targetPlatform "x64"
+
+            sources {
+                cpp {
+                    source {
+                        srcDir 'src/main/jni'
+                        include '**/*.cpp'
+                    }
+                }
+            }
+
+            buildTypes {
+                debug
+                release
+            }
+
+            binaries.all {
+                // Options for building on windows
+                cppCompiler.args "-I${Jvm.current().javaHome}/include"
+                cppCompiler.args "-I${Jvm.current().javaHome}/include/win32"
+                linker.args 'Shlwapi.lib', 'Advapi32.lib'
+            }
+        }
+    }
+}
